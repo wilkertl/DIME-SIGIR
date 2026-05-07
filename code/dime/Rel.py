@@ -10,10 +10,10 @@ class Rel(AbstractDime):
 
         self.docs_encoder = kwargs["docs_encoder"]
         self.qrels = kwargs["qrels"].copy()
-        self.name = "Oracle"
+        self.name = "Rel"
 
     def querywise_compute_importance(self, query, *args, **kwargs):
-        local_qrels = self.qrels.query("query_id in @query.query_id")
+        local_qrels = self.qrels.query("query_id == @query.query_id")
         max_rel = local_qrels.relevance.max()
         local_qrels = local_qrels.query("relevance == @max_rel")
         rel_doc = local_qrels.doc_id.iloc[np.random.randint(len(local_qrels))]

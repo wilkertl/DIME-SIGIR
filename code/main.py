@@ -10,43 +10,72 @@ import argparse
 import importlib
 import dime.utils
 import sys
+from pathlib import Path
 from multiprocessing.dummy import Pool
 sys.path += [".", "DIME_simple/code", "DIME_simple/code/ir_models"]
 
+from datasets.ulysses_rfcorpus import ULYSSES_CORPUS_NAME, load_ulysses_queries_qrels
+from ir_models.dense import get_dense_model
 import local_utils
 
-if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--collection", type=str)
-    parser.add_argument("-e", "--encoder", type=str)
-    parser.add_argument("-d", "--dime", type=str)
-    parser.add_argument("--basepath", default=".")
-    args = parser.parse_args()
+COLLECTION_TO_CORPUS = {
+    "trec-dl-2019": "msmarco-passages",
+    "trec-dl-2020": "msmarco-passages",
+    "trec-robust-2004": "tipster",
+    ULYSSES_CORPUS_NAME: ULYSSES_CORPUS_NAME,
+}
+
+MEASURES = ["AP", "R@1000", "MRR", "nDCG@3", "nDCG@10", "nDCG@100", "nDCG@20", "nDCG@50"]
 
 
-    if args.collection == "trec-dl-2019":
+def load_collection(collection, basepath):
+    if collection == "trec-dl-2019":
         dataset = ir_datasets.load("msmarco-passage/trec-dl-2019/judged")
         qrels = pd.DataFrame(dataset.qrels_iter())
         queries = pd.DataFrame(dataset.queries_iter()).query("query_id in @qrels.query_id")
 
-    elif args.collection == "trec-dl-2020":
+    elif collection == "trec-dl-2020":
         dataset = ir_datasets.load("msmarco-passage/trec-dl-2020/judged")
         qrels = pd.DataFrame(dataset.qrels_iter())
         queries = pd.DataFrame(dataset.queries_iter()).query("query_id in @qrels.query_id")
 
-    elif args.collection == "trec-robust-2004":
+    elif collection == "trec-robust-2004":
         dataset = ir_datasets.load("disks45/nocr/trec-robust-2004")
         qrels = pd.DataFrame(dataset.qrels_iter())
         queries = pd.DataFrame(dataset.queries_iter()).query("query_id in @qrels.query_id")[["query_id", "title"]].rename({"title": "text"}, axis=1)
 
+    elif collection == ULYSSES_CORPUS_NAME:
+        queries, qrels = load_ulysses_queries_qrels(basepath)
+
     else:
-        ValueError("collection not recognized")
+        available = ", ".join(sorted(COLLECTION_TO_CORPUS))
+        raise ValueError(f"collection not recognized: {collection}. Available collections: {available}")
+
+    queries = queries.copy()
+    qrels = qrels.copy()
+    queries["query_id"] = queries.query_id.astype(str)
+    qrels["query_id"] = qrels.query_id.astype(str)
+    qrels["doc_id"] = qrels.doc_id.astype(str)
+    return queries, qrels
 
 
-    col2corpus = {"trec-dl-2019": "msmarco-passages", "trec-dl-2020": "msmarco-passages", "trec-robust-2004": "tipster"}
+def save_metrics(per_query, mean_metrics, args):
+    if args.output_dir is None:
+        return
 
-    encoder = getattr(importlib.import_module(f"ir_models.dense"), args.encoder.capitalize())()
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    stem = f"{args.collection}_{args.encoder}_{args.dime}"
+    per_query.to_csv(output_dir / f"{stem}_per_query.csv", index=False)
+    mean_metrics.to_csv(output_dir / f"{stem}_mean.csv", index=False)
+
+
+def run_pipeline(args):
+    queries, qrels = load_collection(args.collection, args.basepath)
+
+    encoder = get_dense_model(args.encoder)
     queries["representation"] = list(encoder.encode_queries(queries.text.to_list()))
 
 
@@ -55,17 +84,16 @@ if __name__ == "__main__":
     #to construct the encoding of the documents, you can use the method encode_documents of the istances of classes in the module ir_models.dense
     #since memmaps do not allow to store the id of the document corresponding to a certain row, we assume this mapping to be stored in a csv file
 
+    memmap_path = f"{args.basepath}/data/memmap/{COLLECTION_TO_CORPUS[args.collection]}/{args.encoder}/{args.encoder}.dat"
+    memmap_idmp = f"{args.basepath}/data/memmap/{COLLECTION_TO_CORPUS[args.collection]}/{args.encoder}/{args.encoder}_map.csv"
 
-    memmap_path = f"{args.basepath}/data/memmap/{col2corpus[args.collection]}/{args.encoder}/{args.encoder}.dat"
-    memmap_idmp = f"{args.basepath}/data/memmap/{col2corpus[args.collection]}/{args.encoder}/{args.encoder}_map.csv"
-
-    docs_encoder = local_utils.MemmapEncoding(memmap_path, memmap_idmp, embedding_size=768, index_name="doc_id")
+    docs_encoder = local_utils.MemmapEncoding(memmap_path, memmap_idmp, embedding_size=encoder.get_embedding_dim(), index_name="doc_id")
     indexWrapper = local_utils.FaissIndex(data=docs_encoder.get_data(), mapper=docs_encoder.get_ids())
 
 
     if args.dime == "oracle":
         dime_params = {"qrels": qrels, "docs_encoder": docs_encoder}
-    if args.dime == "rel":
+    elif args.dime == "rel":
         dime_params = {"qrels": qrels, "docs_encoder": docs_encoder}
     elif args.dime == "prf":
         run = indexWrapper.retrieve(queries)
@@ -77,7 +105,7 @@ if __name__ == "__main__":
         dime_params = {"llm_docs": answers}
 
     else:
-        ValueError("dime not recognized")
+        raise ValueError("dime not recognized")
 
 
     dim_estimator = getattr(importlib.import_module(f"dime"), args.dime.capitalize())(**dime_params)
@@ -98,9 +126,30 @@ if __name__ == "__main__":
         run = pd.concat(pool.map(alpha_retrieve, [[importance, queries, a] for a in alphas]))
 
     perf = run.groupby("alpha").apply(
-        lambda x: local_utils.compute_measure(x, qrels, ["AP", "R@1000", "MRR", "nDCG@3", "nDCG@10", "nDCG@100", "nDCG@20", "nDCG@50"])) \
+        lambda x: local_utils.compute_measure(x, qrels, MEASURES)) \
         .reset_index().drop("level_1", axis=1)
 
-    print(perf.groupby(["alpha", "measure"]).value.mean().reset_index()\
-          .sort_values(["measure", "alpha"], ascending=True)\
+    perf["collection"] = args.collection
+    perf["encoder"] = args.encoder
+    perf["dime"] = args.dime
+
+    mean_metrics = perf.groupby(["collection", "encoder", "dime", "alpha", "measure"]).value.mean().reset_index()
+    save_metrics(perf, mean_metrics, args)
+
+    print(mean_metrics.sort_values(["measure", "alpha"], ascending=True)
           .pivot_table(index="measure", columns="alpha", values="value").to_string())
+
+    return perf, mean_metrics
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--collection", type=str, choices=sorted(COLLECTION_TO_CORPUS), required=True)
+    parser.add_argument("-e", "--encoder", type=str, required=True)
+    parser.add_argument("-d", "--dime", type=str, required=True)
+    parser.add_argument("--basepath", default=".")
+    parser.add_argument("--output-dir")
+    args = parser.parse_args()
+
+    run_pipeline(args)
