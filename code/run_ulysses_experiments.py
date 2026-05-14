@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from tqdm.auto import tqdm
 
 
 DEFAULT_ENCODERS = ["qwen3embedding06b", "bidirlm1bembedding", "bgem3", "embeddinggemma300m"]
@@ -99,11 +100,21 @@ if __name__ == "__main__":
     args = parse_args()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    for encoder in args.encoders:
+    encoders = tqdm(args.encoders, desc="encoders", unit="encoder", dynamic_ncols=True)
+    for encoder in encoders:
+        encoders.set_postfix_str(encoder)
         if not args.skip_memmap:
             ensure_memmap(args, encoder)
 
-        for dime in args.dimes:
+        dimes = tqdm(
+            args.dimes,
+            desc=f"{encoder} DIME modes",
+            unit="mode",
+            leave=False,
+            dynamic_ncols=True,
+        )
+        for dime in dimes:
+            dimes.set_postfix_str(dime)
             run_evaluation(args, encoder, dime)
 
     collate_outputs(args.output_dir)

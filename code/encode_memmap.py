@@ -5,6 +5,7 @@ from pathlib import Path
 
 import ir_datasets
 import numpy as np
+from tqdm.auto import tqdm
 
 sys.path += [".", "DIME_simple/code", "DIME_simple/code/ir_models"]
 
@@ -94,16 +95,24 @@ def encode_memmap(args):
     with open(mapping_path, "w") as fp:
         fp.write("doc_id,offset\n")
 
-        for batch_ids, batch_texts in iter_batches(dataset, args.batch_size, args.limit):
-            embeddings = encoder.encode_documents(batch_texts).astype(np.float32)
-            next_offset = offset + len(batch_ids)
-            data[offset:next_offset] = embeddings
+        progress = tqdm(
+            total=total_docs,
+            desc=f"encoding {args.corpus}/{args.encoder}",
+            unit="doc",
+            dynamic_ncols=True,
+        )
+        with progress:
+            for batch_ids, batch_texts in iter_batches(dataset, args.batch_size, args.limit):
+                embeddings = encoder.encode_documents(batch_texts).astype(np.float32)
+                next_offset = offset + len(batch_ids)
+                data[offset:next_offset] = embeddings
 
-            for doc_id in batch_ids:
-                fp.write(f"{doc_id},{offset}\n")
-                offset += 1
+                for doc_id in batch_ids:
+                    fp.write(f"{doc_id},{offset}\n")
+                    offset += 1
 
-            data.flush()
+                data.flush()
+                progress.update(len(batch_ids))
 
     if offset != total_docs:
         raise ValueError(f"encoded {offset} documents, but expected {total_docs}")

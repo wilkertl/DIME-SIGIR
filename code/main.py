@@ -12,6 +12,7 @@ import dime.utils
 import sys
 from pathlib import Path
 from multiprocessing.dummy import Pool
+from tqdm.auto import tqdm
 sys.path += [".", "DIME_simple/code", "DIME_simple/code/ir_models"]
 
 from datasets.ulysses_rfcorpus import ULYSSES_CORPUS_NAME, load_ulysses_queries_qrels
@@ -76,6 +77,7 @@ def run_pipeline(args):
     queries, qrels = load_collection(args.collection, args.basepath)
 
     encoder = get_dense_model(args.encoder)
+    tqdm.write(f"encoding {len(queries)} queries with {args.encoder}")
     queries["representation"] = list(encoder.encode_queries(queries.text.to_list()))
 
 
@@ -96,6 +98,7 @@ def run_pipeline(args):
     elif args.dime == "rel":
         dime_params = {"qrels": qrels, "docs_encoder": docs_encoder}
     elif args.dime == "prf":
+        tqdm.write("retrieving initial PRF run")
         run = indexWrapper.retrieve(queries)
         dime_params = {"docs_encoder": docs_encoder, "k": 5, "run": run}
     elif args.dime == "llm":
@@ -123,8 +126,17 @@ def run_pipeline(args):
     alphas = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 
     with Pool(processes=len(alphas)) as pool:
-        run = pd.concat(pool.map(alpha_retrieve, [[importance, queries, a] for a in alphas]))
+        run = pd.concat(
+            tqdm(
+                pool.imap(alpha_retrieve, [[importance, queries, a] for a in alphas]),
+                total=len(alphas),
+                desc="retrieving alpha runs",
+                unit="alpha",
+                dynamic_ncols=True,
+            )
+        )
 
+    tqdm.write("computing metrics")
     perf = run.groupby("alpha").apply(
         lambda x: local_utils.compute_measure(x, qrels, MEASURES)) \
         .reset_index().drop("level_1", axis=1)

@@ -5,3 +5,4 @@ transformers>=4.57.6,<5.0.0
 ir_datasets
 ir-measures
 torch
+tqdm

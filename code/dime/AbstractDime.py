@@ -2,6 +2,7 @@ import pandas as pd
 from multiprocessing import Pool
 import numpy as np
 import sys
+from tqdm.auto import tqdm
 
 
 class AbstractDime:
@@ -25,7 +26,17 @@ class AbstractDime:
         """
 
         self.d = len(queries.representation.values[0])
-        out = list(queries.apply(self.querywise_compute_importance, axis=1))
+        iterator = (
+            row
+            for _, row in tqdm(
+                queries.iterrows(),
+                total=len(queries),
+                desc=f"{getattr(self, 'name', type(self).__name__)} importance",
+                unit="query",
+                dynamic_ncols=True,
+            )
+        )
+        out = [self.querywise_compute_importance(row) for row in iterator]
         importance = pd.concat(out)
 
         return importance
@@ -38,7 +49,16 @@ class AbstractDime:
         :return:  a pandas dataframe with three columns, query_id, dimension, importance
         """
         with Pool() as pool:
-            importance = pd.concat(pool.map(self._compute_importance, np.array_split(queries, self.workers)))
+            chunks = np.array_split(queries, self.workers)
+            importance = pd.concat(
+                tqdm(
+                    pool.imap(self._compute_importance, chunks),
+                    total=len(chunks),
+                    desc=f"{getattr(self, 'name', type(self).__name__)} workers",
+                    unit="chunk",
+                    dynamic_ncols=True,
+                )
+            )
 
         return importance
 
