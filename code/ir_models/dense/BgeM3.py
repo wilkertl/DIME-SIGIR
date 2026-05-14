@@ -5,10 +5,12 @@ from .AbstractDenseModel import AbstractDenseModel
 
 class BgeM3(AbstractDenseModel):
 
-    def __init__(self, *args, model_hgf="BAAI/bge-m3", **kwargs):
+    def __init__(self, *args, model_hgf="BAAI/bge-m3", max_seq_length=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.model_hgf = model_hgf
         self.model = SentenceTransformer(model_hgf)
+        if max_seq_length is not None:
+            self.model.max_seq_length = max_seq_length
         self.name = "bgem3"
         self.embeddings_dim = 1024
 

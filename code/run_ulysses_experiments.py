@@ -43,6 +43,8 @@ def ensure_memmap(args, encoder):
 
     if args.limit is not None:
         command += ["--limit", str(args.limit)]
+    if args.max_seq_length is not None:
+        command += ["--max-seq-length", str(args.max_seq_length)]
     if args.overwrite_memmaps:
         command.append("--overwrite")
 
@@ -64,6 +66,8 @@ def run_evaluation(args, encoder, dime):
         "--output-dir",
         args.output_dir,
     ]
+    if args.max_seq_length is not None:
+        command += ["--max-seq-length", str(args.max_seq_length)]
     run_command(command)
 
 
@@ -91,6 +95,7 @@ def parse_args():
     parser.add_argument("--dimes", nargs="+", default=DEFAULT_DIMES, choices=DEFAULT_DIMES)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--max-seq-length", type=int)
     parser.add_argument("--overwrite-memmaps", action="store_true")
     parser.add_argument("--skip-memmap", action="store_true")
     return parser.parse_args()

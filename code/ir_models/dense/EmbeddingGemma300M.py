@@ -5,10 +5,12 @@ from .AbstractDenseModel import AbstractDenseModel
 
 class EmbeddingGemma300M(AbstractDenseModel):
 
-    def __init__(self, *args, model_hgf="google/embeddinggemma-300m", **kwargs):
+    def __init__(self, *args, model_hgf="google/embeddinggemma-300m", max_seq_length=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.model_hgf = model_hgf
         self.model = SentenceTransformer(model_hgf)
+        if max_seq_length is not None:
+            self.model.max_seq_length = max_seq_length
         self.name = "embeddinggemma300m"
         self.embeddings_dim = 768
 

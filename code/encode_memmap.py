@@ -77,7 +77,7 @@ def encode_memmap(args):
     if args.limit is not None:
         total_docs = min(total_docs, args.limit)
 
-    encoder = get_dense_model(args.encoder)
+    encoder = get_dense_model(args.encoder, max_seq_length=args.max_seq_length)
     embedding_dim = encoder.get_embedding_dim()
 
     output_dir = Path(args.basepath) / "data" / "memmap" / args.corpus / args.encoder
@@ -125,6 +125,7 @@ if __name__ == "__main__":
     parser.add_argument("--basepath", default=".")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--max-seq-length", type=int)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 

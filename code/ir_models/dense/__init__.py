@@ -28,9 +28,9 @@ DENSE_MODELS = {
 }
 
 
-def get_dense_model(name):
+def get_dense_model(name, **kwargs):
     try:
-        return DENSE_MODELS[name.lower()]()
+        return DENSE_MODELS[name.lower()](**kwargs)
     except KeyError:
         available = ", ".join(sorted(DENSE_MODELS))
         raise ValueError(f"encoder not recognized: {name}. Available encoders: {available}")

@@ -76,7 +76,7 @@ def save_metrics(per_query, mean_metrics, args):
 def run_pipeline(args):
     queries, qrels = load_collection(args.collection, args.basepath)
 
-    encoder = get_dense_model(args.encoder)
+    encoder = get_dense_model(args.encoder, max_seq_length=args.max_seq_length)
     tqdm.write(f"encoding {len(queries)} queries with {args.encoder}")
     queries["representation"] = list(encoder.encode_queries(queries.text.to_list()))
 
@@ -162,6 +162,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dime", type=str, required=True)
     parser.add_argument("--basepath", default=".")
     parser.add_argument("--output-dir")
+    parser.add_argument("--max-seq-length", type=int)
     args = parser.parse_args()
 
     run_pipeline(args)
