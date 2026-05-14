@@ -8,4 +8,5 @@ results/
 
 # Generated/local datasets and dense encoding artifacts.
 data/ulysses-rfcorpus/
+data/ulysses-rfcorpus-subset/
 data/memmap/*/*/
